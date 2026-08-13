@@ -28,6 +28,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
         }
     }
 
+    private readonly object _apiLock;
     private readonly Target _target;
     private readonly TargetPointer _module;
     private readonly uint _token;
@@ -37,7 +38,18 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
         TargetPointer module,
         uint token,
         IXCLRDataMethodDefinition? legacyImpl)
+        : this(target, module, token, legacyImpl, new object())
     {
+    }
+
+    internal ClrDataMethodDefinition(
+        Target target,
+        TargetPointer module,
+        uint token,
+        IXCLRDataMethodDefinition? legacyImpl,
+        object apiLock)
+    {
+        _apiLock = apiLock;
         _target = target;
         _module = module;
         _token = token;
@@ -144,10 +156,15 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
     }
 
     int IXCLRDataMethodDefinition.GetTypeDefinition(DacComNullableByRef<IXCLRDataTypeDefinition> typeDefinition)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataMethodDefinition.StartEnumInstances(IXCLRDataAppDomain? appDomain, ulong* handle)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_FALSE;
         *handle = 0;
 
@@ -207,6 +224,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.EnumInstance(ulong* handle, DacComNullableByRef<IXCLRDataMethodInstance> instance)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         if (*handle == 0)
@@ -234,7 +252,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
             if (emi.Enumerator.MoveNext())
             {
                 MethodDescHandle methodDesc = emi.Enumerator.Current;
-                instance.Interface = new ClrDataMethodInstance(_target, methodDesc, emi._appDomain, legacyMethod);
+                instance.Interface = new ClrDataMethodInstance(_target, methodDesc, emi._appDomain, legacyMethod, _apiLock);
             }
             else
             {
@@ -267,6 +285,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.EndEnumInstances(ulong handle)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         try
@@ -298,6 +317,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.GetName(uint flags, uint bufLen, uint* nameLen, char* name)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         try
@@ -370,6 +390,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.GetTokenAndScope(uint* token, DacComNullableByRef<IXCLRDataModule> mod)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -389,7 +410,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
                     legacyMod = legacyModOut.Interface;
                 }
 
-                mod.Interface = new ClrDataModule(_module, _target, legacyMod);
+                mod.Interface = new ClrDataModule(_module, _target, legacyMod, _apiLock);
             }
         }
         catch (System.Exception ex)
@@ -420,16 +441,29 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
     }
 
     int IXCLRDataMethodDefinition.GetFlags(uint* flags)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataMethodDefinition.IsSameObject(IXCLRDataMethodDefinition? method)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataMethodDefinition.GetLatestEnCVersion(uint* version)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataMethodDefinition.StartEnumExtents(ulong* handle)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -482,6 +516,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.EnumExtent(ulong* handle, ClrDataMethodDefinitionExtent* extent)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         EnumMethodDefinitionExtents? extents = null;
         try
@@ -535,6 +570,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.EndEnumExtents(ulong handle)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         nuint legacyHandle = 0;
         try
@@ -568,6 +604,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.GetCodeNotification(uint* flags)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         ICodeNotifications codeNotif = _target.Contracts.CodeNotifications;
 
@@ -592,6 +629,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.SetCodeNotification(uint flags)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         ICodeNotifications codeNotif = _target.Contracts.CodeNotifications;
 
@@ -616,6 +654,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.Request(uint reqCode, uint inBufferSize, byte* inBuffer, uint outBufferSize, byte* outBuffer)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         try
@@ -659,6 +698,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.GetRepresentativeEntryAddress(ClrDataAddress* addr)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -694,6 +734,7 @@ public sealed unsafe partial class ClrDataMethodDefinition : IXCLRDataMethodDefi
 
     int IXCLRDataMethodDefinition.HasClassOrMethodInstantiation(int* bGeneric)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         try

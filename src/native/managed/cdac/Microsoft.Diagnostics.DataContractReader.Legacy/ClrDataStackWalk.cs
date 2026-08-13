@@ -14,6 +14,7 @@ namespace Microsoft.Diagnostics.DataContractReader.Legacy;
 [GeneratedComClass]
 public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
 {
+    private readonly object _apiLock;
     private readonly TargetPointer _threadAddr;
     private readonly CLRDataStackWalkFlag _flags;
     private readonly Target _target;
@@ -26,7 +27,13 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     private ulong _stackSizeSkipped;
 
     public ClrDataStackWalk(TargetPointer threadAddr, CLRDataStackWalkFlag flags, Target target, IXCLRDataStackWalk? legacyImpl)
+        : this(threadAddr, flags, target, legacyImpl, new object())
     {
+    }
+
+    internal ClrDataStackWalk(TargetPointer threadAddr, CLRDataStackWalkFlag flags, Target target, IXCLRDataStackWalk? legacyImpl, object apiLock)
+    {
+        _apiLock = apiLock;
         _threadAddr = threadAddr;
         _flags = flags;
         _target = target;
@@ -81,6 +88,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
 
     int IXCLRDataStackWalk.GetContext(uint contextFlags, uint contextBufSize, uint* contextSize, [MarshalUsing(CountElementName = "contextBufSize"), Out] byte[] contextBuf)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         if (_currentFrameIsValid)
@@ -128,6 +136,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
 
     int IXCLRDataStackWalk.GetFrame(DacComNullableByRef<IXCLRDataFrame> frame)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         IXCLRDataFrame? legacyFrame = null;
@@ -145,7 +154,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
             if (!_currentFrameIsValid)
                 throw new ArgumentException();
 
-            frame.Interface = new ClrDataFrame(_target, _threadAddr, _dataFrames.Current, legacyFrame);
+            frame.Interface = new ClrDataFrame(_target, _threadAddr, _dataFrames.Current, legacyFrame, _apiLock);
         }
         catch (System.Exception ex)
         {
@@ -156,6 +165,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     }
     int IXCLRDataStackWalk.GetFrameType(CLRDataSimpleFrameType* simpleType, CLRDataDetailedFrameType* detailedType)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -210,6 +220,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     }
     int IXCLRDataStackWalk.GetStackSizeSkipped(ulong* stackSizeSkipped)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -237,6 +248,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     }
     int IXCLRDataStackWalk.Next()
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr;
         try
         {
@@ -264,6 +276,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     }
     int IXCLRDataStackWalk.Request(uint reqCode, uint inBufferSize, byte* inBuffer, uint outBufferSize, byte* outBuffer)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         const uint DACSTACKPRIV_REQUEST_FRAME_DATA = 0xf0000000;
 
         int hr = HResults.S_OK;
@@ -320,6 +333,7 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     }
     int IXCLRDataStackWalk.SetContext(uint contextSize, [In, MarshalUsing(CountElementName = "contextSize")] byte[] context)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -347,5 +361,9 @@ public sealed unsafe partial class ClrDataStackWalk : IXCLRDataStackWalk
     }
 
     int IXCLRDataStackWalk.SetContext2(uint flags, uint contextSize, [In, MarshalUsing(CountElementName = "contextSize")] byte[] context)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 }

@@ -25,6 +25,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 {
     private const uint DefaultAppDomainId = 1;
 
+    private readonly object _apiLock;
     private readonly Target _target;
     private IDacDbiInterface? _legacy;
     private ComObject? _dataTargetComObject;
@@ -65,7 +66,17 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
         Target target,
         object? legacyObj,
         ComObject? dataTargetComObject = null)
+        : this(target, legacyObj, new object(), dataTargetComObject)
     {
+    }
+
+    public DacDbiImpl(
+        Target target,
+        object? legacyObj,
+        object apiLock,
+        ComObject? dataTargetComObject = null)
+    {
+        _apiLock = apiLock;
         _target = target;
         _legacy = legacyObj as IDacDbiInterface;
         _dataTargetComObject = dataTargetComObject;
@@ -73,12 +84,14 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int FlushCache()
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         _target.Flush(FlushScope.All);
         return _legacy is not null ? _legacy.FlushCache() : HResults.S_OK;
     }
 
     public int Destroy()
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         try
         {
             ComObject? legacyComObject = (object?)_legacy as ComObject;
@@ -96,12 +109,17 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
     }
 
     public int DacSetTargetConsistencyChecks(Interop.BOOL fEnableAsserts)
-        => LegacyFallbackHelper.CanFallback() && _legacy is not null
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return LegacyFallbackHelper.CanFallback() && _legacy is not null
             ? _legacy.DacSetTargetConsistencyChecks(fEnableAsserts)
             : HResults.S_OK;
+    }
 
     public int IsLeftSideInitialized(Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -129,6 +147,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetAppDomainId(ulong vmAppDomain, uint* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -154,6 +173,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetAppDomainFullName(ulong vmAppDomain, nint pStrName)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -176,6 +196,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetModuleSimpleName(ulong vmModule, nint pStrFilename)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         string? cdacSimpleName = null;
         try
@@ -208,6 +229,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetAssemblyPath(ulong vmAssembly, nint pStrFilename, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -244,6 +266,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int ResolveTypeReference(DacDbiTypeRefData* pTypeRefInfo, DacDbiTypeRefData* pTargetRefInfo)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         bool resolved = false;
         TargetPointer targetAssembly = TargetPointer.Null;
@@ -327,6 +350,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetModulePath(ulong vmModule, nint pStrFilename, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -374,6 +398,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetMetadata(ulong vmModule, DacDbiTargetBuffer* pTargetBuffer)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -418,6 +443,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetReadWriteMetadataSize(ulong vmModule, uint* pSize)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -454,6 +480,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int FillReadWriteMetadata(ulong vmModule, byte* pBuffer, uint cbBuffer)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         int blobLength = 0;
         try
@@ -498,6 +525,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetSymbolsBuffer(ulong vmModule, DacDbiTargetBuffer* pTargetBuffer, SymbolFormat* pSymbolFormat)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -547,6 +575,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetModuleData(ulong vmModule, DacDbiModuleInfo* pData)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -597,6 +626,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
     }
     public int GetModuleForAssembly(ulong vmAssembly, ulong* pModule, Interop.BOOL* pIsModuleLoaded)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -639,6 +669,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int IsManagedCode(ulong address, Interop.BOOL* pIsManaged)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -672,6 +703,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetCompilerFlags(ulong vmAssembly, Interop.BOOL* pfAllowJITOpts, Interop.BOOL* pfEnableEnC)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pfAllowJITOpts = Interop.BOOL.FALSE;
         *pfEnableEnC = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
@@ -710,6 +742,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int SetCompilerFlags(ulong vmAssembly, Interop.BOOL fAllowJitOpts, Interop.BOOL fEnableEnC)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -757,6 +790,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int EnumerateAssembliesInAppDomain(ulong vmAppDomain, delegate* unmanaged<ulong, nint, void> fpCallback, nint pUserData)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 #if DEBUG
         List<ulong>? cdacAssemblies = _legacy is not null ? new() : null;
@@ -818,6 +852,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int RequestSyncAtEvent()
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -839,6 +874,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int SetSendExceptionsOutsideOfJMC(Interop.BOOL sendExceptionsOutsideOfJMC)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -860,6 +896,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int MarkDebuggerAttachPending()
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -891,6 +928,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int MarkDebuggerAttached(Interop.BOOL fAttached)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -935,6 +973,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int Hijack(ulong vmThread, uint dwThreadId, nint pRecord, nint pOriginalContext, uint cbSizeContext, int reason, nint pUserData, ulong* pRemoteContextAddr)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         // Hijack mutates live target state (it writes to the thread's stack and sets the thread context).
         // It therefore cannot be cross-checked against the legacy implementation in DEBUG builds.
         // See https://github.com/dotnet/runtime/blob/0d1a20fb14109f277df06ebee3f83c964f9dcc61/src/coreclr/debug/daccess/dacdbiimpl.cpp#L4907 for more algorithm detail.
@@ -986,6 +1025,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int EnumerateThreads(delegate* unmanaged<ulong, nint, void> fpCallback, nint pUserData)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 #if DEBUG
         List<ulong>? cdacThreads = _legacy is not null ? new() : null;
@@ -1045,6 +1085,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int IsThreadMarkedDead(ulong vmThread, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -1071,6 +1112,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetThreadHandle(ulong vmThread, void** pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -1096,6 +1138,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetThreadObject(ulong vmThread, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1125,6 +1168,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetThreadAllocInfo(ulong vmThread, DacDbiThreadAllocInfo* pThreadAllocInfo)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -1159,6 +1203,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int SetDebugState(ulong vmThread, int debugState)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -1193,6 +1238,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int HasUnhandledException(ulong vmThread, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -1219,6 +1265,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetUserState(ulong vmThread, int* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -1260,6 +1307,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetPartialUserState(ulong vmThread, CorDebugUserState* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = default;
         int hr = HResults.S_OK;
         try
@@ -1305,6 +1353,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetConnectionID(ulong vmThread, uint* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
 #if DEBUG
@@ -1322,6 +1371,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetTaskID(ulong vmThread, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
 #if DEBUG
@@ -1339,6 +1389,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int TryGetVolatileOSThreadID(ulong vmThread, uint* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1368,6 +1419,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetUniqueThreadID(ulong vmThread, uint* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1394,6 +1446,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetCurrentException(ulong vmThread, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1427,6 +1480,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetObjectForCCW(ulong ccwPtr, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1476,6 +1530,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetCurrentCustomDebuggerNotification(ulong vmThread, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1502,6 +1557,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetCurrentAppDomain(ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1528,6 +1584,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int ResolveAssembly(ulong vmScope, uint tkAssemblyRef, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -1571,6 +1628,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
         delegate* unmanaged<DbiOffsetMapping*, void*, void> fpSeqPointCallback,
         nint pUserData)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         // Fully materialize both arrays before invoking any callback to avoid delivering partial results on failure.
         List<NativeVarInfo> cdacVarInfos = new();
         List<DbiOffsetMapping> cdacSeqPoints = new();
@@ -1643,6 +1701,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetManagedStoppedContext(ulong vmThread, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -1729,6 +1788,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int CreateStackWalk(ulong vmThread, byte* pInternalContextBuffer, nuint* ppSFIHandle)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         if (ppSFIHandle is null)
             return HResults.E_POINTER;
         if (pInternalContextBuffer == null)
@@ -1791,6 +1851,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int DeleteStackWalk(nuint ppSFIHandle)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         if (ppSFIHandle == 0)
             return HResults.S_OK;
 
@@ -1819,6 +1880,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetStackWalkCurrentContext(nuint pSFIHandle, byte* pContext)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         if (pSFIHandle == 0)
             return HResults.E_INVALIDARG;
         if (pContext == null)
@@ -1876,6 +1938,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int SetStackWalkCurrentContext(ulong vmThread, nuint pSFIHandle, int flag, byte* pContext)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         if (pSFIHandle == 0)
             return HResults.E_INVALIDARG;
         if (pContext == null)
@@ -1907,6 +1970,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int UnwindStackWalkFrame(nuint pSFIHandle, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         if (pSFIHandle == 0)
             return HResults.E_INVALIDARG;
         if (pResult == null)
@@ -1959,6 +2023,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int CheckContext(ulong vmThread, byte* pContext)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -1991,6 +2056,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetStackWalkCurrentFrameInfo(nuint pSFIHandle, nint pFrameData, FrameType* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         if (pSFIHandle == 0)
             return HResults.E_INVALIDARG;
 
@@ -2279,6 +2345,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetCountOfInternalFrames(ulong vmThread, uint* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -2313,6 +2380,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int EnumerateInternalFrames(ulong vmThread, delegate* unmanaged<Debugger_STRData*, void*, void> fpCallback, nint pUserData)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 #if DEBUG
         List<Debugger_STRData>? cdacFrames = _legacy is not null ? new() : null;
@@ -2454,6 +2522,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetStackParameterSize(ulong controlPC, uint* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -2499,6 +2568,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int IsLeafFrame(ulong vmThread, byte* pContext, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -2536,6 +2606,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetContext(ulong vmThread, byte* pContextBuffer)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -2576,6 +2647,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int IsDiagnosticsHiddenOrLCGMethod(ulong vmMethodDesc, int* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = (int)DynamicMethodType.kNone;
         int hr = HResults.S_OK;
         try
@@ -2610,6 +2682,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetVarArgSig(ulong VASigCookieAddr, ulong* pArgBase, DacDbiTargetBuffer* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pArgBase = 0;
         *pRetVal = default;
         int hr = HResults.S_OK;
@@ -2646,6 +2719,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int RequiresAlign8(ulong thExact, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         RuntimeInfoArchitecture arch = _target.Contracts.RuntimeInfo.GetTargetArchitecture();
@@ -2682,6 +2756,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int ResolveExactGenericArgsToken(uint dwExactGenericArgsTokenIndex, ulong rawToken, ulong* pRetVal)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pRetVal = 0;
         int hr = HResults.S_OK;
         try
@@ -2734,6 +2809,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetILCodeAndSig(ulong vmAssembly, uint functionToken, DacDbiTargetBuffer* pTargetBuffer, uint* pLocalSigToken)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -2806,6 +2882,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetNativeCodeInfo(ulong vmAssembly, uint functionToken, NativeCodeFunctionData* pCodeInfo)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -2871,6 +2948,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int GetNativeCodeInfoForAddr(ulong codeAddress, NativeCodeFunctionData* pCodeInfo, ulong* pVmModule, uint* pFunctionToken)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -2991,6 +3069,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int IsValueType(ulong vmTypeHandle, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try
@@ -3018,6 +3097,7 @@ public sealed unsafe partial class DacDbiImpl : IDacDbiInterface
 
     public int HasTypeParams(ulong vmTypeHandle, Interop.BOOL* pResult)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         *pResult = Interop.BOOL.FALSE;
         int hr = HResults.S_OK;
         try

@@ -18,6 +18,7 @@ namespace Microsoft.Diagnostics.DataContractReader.Legacy;
 [GeneratedComClass]
 public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame2
 {
+    private readonly object _apiLock;
     private readonly Target _target;
     private readonly TargetPointer _threadAddress;
     private readonly IXCLRDataFrame? _legacyImpl;
@@ -25,7 +26,13 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
     private readonly IStackDataFrameHandle _dataFrame;
 
     public ClrDataFrame(Target target, TargetPointer threadAddress, IStackDataFrameHandle dataFrame, IXCLRDataFrame? legacyImpl)
+        : this(target, threadAddress, dataFrame, legacyImpl, new object())
     {
+    }
+
+    internal ClrDataFrame(Target target, TargetPointer threadAddress, IStackDataFrameHandle dataFrame, IXCLRDataFrame? legacyImpl, object apiLock)
+    {
+        _apiLock = apiLock;
         _target = target;
         _threadAddress = threadAddress;
         _legacyImpl = legacyImpl;
@@ -35,7 +42,11 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
 
     // IXCLRDataFrame implementation
     int IXCLRDataFrame.GetFrameType(uint* simpleType, uint* detailedType)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataFrame.GetContext(
         uint contextFlags,
@@ -43,6 +54,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         uint* contextSize,
         [Out, MarshalUsing(CountElementName = nameof(contextBufSize))] byte[] contextBuf)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -93,6 +105,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
 
     int IXCLRDataFrame.GetAppDomain(DacComNullableByRef<IXCLRDataAppDomain> appDomain)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         int hrLegacy = HResults.S_OK;
@@ -113,7 +126,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
 
             if (appDomainAddr != TargetPointer.Null)
             {
-                appDomain.Interface = new ClrDataAppDomain(_target, appDomainAddr, legacyAppDomain);
+                appDomain.Interface = new ClrDataAppDomain(_target, appDomainAddr, legacyAppDomain, _apiLock);
             }
             else
             {
@@ -137,6 +150,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
 
     int IXCLRDataFrame.GetNumArguments(uint* numArgs)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -175,6 +189,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         uint* nameLen,
         char* name)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         int hrLegacy = HResults.S_OK;
@@ -266,6 +281,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
 
     int IXCLRDataFrame.GetNumLocalVariables(uint* numLocals)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
         try
         {
@@ -297,6 +313,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         uint* nameLen,
         char* name)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         int hrLegacy = HResults.S_OK;
@@ -360,10 +377,15 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         uint bufLen,
         uint* nameLen,
         char* nameBuf)
-        => LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetCodeName(flags, bufLen, nameLen, nameBuf) : HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.GetCodeName(flags, bufLen, nameLen, nameBuf) : HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataFrame.GetMethodInstance(DacComNullableByRef<IXCLRDataMethodInstance> method)
     {
+        using ComInterfaceLock comLockScope = new(_apiLock);
         int hr = HResults.S_OK;
 
         int hrLocal = HResults.S_OK;
@@ -381,7 +403,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
             MethodDescHandle mdh = GetFrameMethodDesc(out _);
             TargetPointer appDomain = _target.Contracts.Loader.GetAppDomain();
 
-            method.Interface = new ClrDataMethodInstance(_target, mdh, appDomain, legacyMethod);
+            method.Interface = new ClrDataMethodInstance(_target, mdh, appDomain, legacyMethod, _apiLock);
         }
         catch (System.Exception ex)
         {
@@ -404,17 +426,33 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         byte* inBuffer,
         uint outBufferSize,
         byte* outBuffer)
-        => LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.Request(reqCode, inBufferSize, inBuffer, outBufferSize, outBuffer) : HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return LegacyFallbackHelper.CanFallback() && _legacyImpl is not null ? _legacyImpl.Request(reqCode, inBufferSize, inBuffer, outBufferSize, outBuffer) : HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataFrame.GetNumTypeArguments(uint* numTypeArgs)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     int IXCLRDataFrame.GetTypeArgumentByIndex(uint index, DacComNullableByRef<IXCLRDataTypeInstance> typeArg)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     // IXCLRDataFrame2 implementation
     int IXCLRDataFrame2.GetExactGenericArgsToken(DacComNullableByRef<IXCLRDataValue> genericToken)
-        => HResults.E_NOTIMPL;
+    {
+        using ComInterfaceLock comLockScope = new(_apiLock);
+
+        return HResults.E_NOTIMPL;
+    }
 
     // ========== Metadata resolution helpers ==========
 
@@ -513,7 +551,7 @@ public sealed unsafe partial class ClrDataFrame : IXCLRDataFrame, IXCLRDataFrame
         ulong baseAddress = locations.Length == 1 && !locations[0].IsRegisterValue
             ? locations[0].AddressOrValue
             : 0;
-        return new ClrDataValue(_target, _threadAddress, valueFlags, typeHandle, baseAddress, locations, legacyImpl);
+        return new ClrDataValue(_target, _threadAddress, valueFlags, typeHandle, baseAddress, locations, legacyImpl, _apiLock);
     }
 
     // ========== Signature-based flag computation ==========
