@@ -1155,7 +1155,6 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
 
     int IXCLRDataProcess.TranslateExceptionRecordToNotification(EXCEPTION_RECORD64* record, [MarshalUsing(typeof(UniqueComInterfaceMarshaller<IXCLRDataExceptionNotification>))] IXCLRDataExceptionNotification notify)
     {
-        using ComInterfaceLock comLockScope = new(_apiLock);
         // notify must be unique so that we can cast it to ComObject, call FinalRelease on it, and deterministically release.
         // This is required because notify is a stack allocated object created by the caller.
         // If the object goes out of scope before we dispose and finalize it, we can crash during GC.
@@ -1164,68 +1163,78 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
         int hr = HResults.S_OK;
         try
         {
-            Span<TargetPointer> exInfo = stackalloc TargetPointer[EXCEPTION_RECORD64.ExceptionMaximumParameters];
-            for (int i = 0; i < EXCEPTION_RECORD64.ExceptionMaximumParameters; i++)
-                exInfo[i] = new TargetPointer(record->ExceptionInformation[i]);
-
-            INotifications notifications = _target.Contracts.Notifications;
-            if (!notifications.TryParseNotification(exInfo, out NotificationData? notification))
-                return HResults.E_INVALIDARG;
-
-            switch (notification)
+            Action? callback = null;
             {
-                case ModuleLoadNotificationData moduleLoad:
+                using ComInterfaceLock comLockScope = new(_apiLock);
+
+                // External notification code can call back into the DAC, so prepare everything
+                // needed for the callback while locked and invoke it after releasing the lock.
+                Span<TargetPointer> exInfo = stackalloc TargetPointer[EXCEPTION_RECORD64.ExceptionMaximumParameters];
+                for (int i = 0; i < EXCEPTION_RECORD64.ExceptionMaximumParameters; i++)
+                    exInfo[i] = new TargetPointer(record->ExceptionInformation[i]);
+
+                INotifications notifications = _target.Contracts.Notifications;
+                if (!notifications.TryParseNotification(exInfo, out NotificationData? notification))
+                    return HResults.E_INVALIDARG;
+
+                switch (notification)
                 {
-                    IXCLRDataModule? legacyModule = null;
-                    if (_legacyImpl is not null)
+                    case ModuleLoadNotificationData moduleLoad:
                     {
-                        DacComNullableByRef<IXCLRDataModule> legacyModuleOut = new(isNullRef: false);
-                        _legacyImpl.GetModule(moduleLoad.ModuleAddress.ToClrDataAddress(_target), legacyModuleOut);
-                        legacyModule = legacyModuleOut.Interface;
+                        IXCLRDataModule? legacyModule = null;
+                        if (_legacyImpl is not null)
+                        {
+                            DacComNullableByRef<IXCLRDataModule> legacyModuleOut = new(isNullRef: false);
+                            _legacyImpl.GetModule(moduleLoad.ModuleAddress.ToClrDataAddress(_target), legacyModuleOut);
+                            legacyModule = legacyModuleOut.Interface;
+                        }
+
+                        ClrDataModule module = new(moduleLoad.ModuleAddress, _target, legacyModule, _apiLock);
+                        callback = () => notify.OnModuleLoaded(module);
+                        break;
                     }
 
-                    notify.OnModuleLoaded(new ClrDataModule(moduleLoad.ModuleAddress, _target, legacyModule, _apiLock));
-                    break;
-                }
-
-                case ModuleUnloadNotificationData moduleUnload:
-                {
-                    IXCLRDataModule? legacyModule = null;
-                    if (_legacyImpl is not null)
+                    case ModuleUnloadNotificationData moduleUnload:
                     {
-                        DacComNullableByRef<IXCLRDataModule> legacyModuleOut = new(isNullRef: false);
-                        _legacyImpl.GetModule(moduleUnload.ModuleAddress.ToClrDataAddress(_target), legacyModuleOut);
-                        legacyModule = legacyModuleOut.Interface;
+                        IXCLRDataModule? legacyModule = null;
+                        if (_legacyImpl is not null)
+                        {
+                            DacComNullableByRef<IXCLRDataModule> legacyModuleOut = new(isNullRef: false);
+                            _legacyImpl.GetModule(moduleUnload.ModuleAddress.ToClrDataAddress(_target), legacyModuleOut);
+                            legacyModule = legacyModuleOut.Interface;
+                        }
+
+                        ClrDataModule module = new(moduleUnload.ModuleAddress, _target, legacyModule, _apiLock);
+                        callback = () => notify.OnModuleUnloaded(module);
+                        break;
                     }
 
-                    notify.OnModuleUnloaded(new ClrDataModule(moduleUnload.ModuleAddress, _target, legacyModule, _apiLock));
-                    break;
-                }
-
-                case JitNotificationData jit:
-                {
-                    TargetPointer appDomain = _target.Contracts.Loader.GetAppDomain();
-
-                    IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
-                    MethodDescHandle methodDesc = rts.GetMethodDescHandle(jit.MethodDescAddress);
-
-                    ClrDataMethodInstance methodInst = new(_target, methodDesc, appDomain, null, _apiLock);
-                    notify.OnCodeGenerated(methodInst);
-                    if (notify is IXCLRDataExceptionNotification5 notify5)
+                    case JitNotificationData jit:
                     {
-                        notify5.OnCodeGenerated2(methodInst, jit.NativeCodeAddress.ToClrDataAddress(_target));
-                    }
-                    break;
-                }
+                        TargetPointer appDomain = _target.Contracts.Loader.GetAppDomain();
 
-                case ExceptionNotificationData exception:
-                {
-                    if (notify is IXCLRDataExceptionNotification2 notify2)
+                        IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
+                        MethodDescHandle methodDesc = rts.GetMethodDescHandle(jit.MethodDescAddress);
+
+                        ClrDataMethodInstance methodInst = new(_target, methodDesc, appDomain, null, _apiLock);
+                        ClrDataAddress nativeCodeAddress = jit.NativeCodeAddress.ToClrDataAddress(_target);
+                        callback = () =>
+                        {
+                            notify.OnCodeGenerated(methodInst);
+                            if (notify is IXCLRDataExceptionNotification5 notify5)
+                            {
+                                notify5.OnCodeGenerated2(methodInst, nativeCodeAddress);
+                            }
+                        };
+                        break;
+                    }
+
+                    case ExceptionNotificationData exception:
                     {
                         IThread thread = _target.Contracts.Thread;
                         Contracts.ThreadData threadData = thread.GetThreadData(exception.ThreadAddress);
                         TargetPointer thrownObjectHandle = thread.GetCurrentExceptionHandle(exception.ThreadAddress);
-                        notify2.OnException(new ClrDataExceptionState(
+                        ClrDataExceptionState exceptionState = new(
                             _target,
                             exception.ThreadAddress,
                             (uint)CLRDataExceptionStateFlag.CLRDATA_EXCEPTION_DEFAULT,
@@ -1233,20 +1242,26 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
                             thrownObjectHandle,
                             threadData.FirstNestedException,
                             null,
-                            _apiLock));
-                    }
-                    else
-                        return HResults.E_INVALIDARG;
-                    break;
-                }
-
-                case GcNotificationData gc:
-                {
-                    if (gc.IsSupportedEvent)
-                    {
-                        if (notify is IXCLRDataExceptionNotification3 notify3)
+                            _apiLock);
+                        callback = () =>
                         {
-                            notify3.OnGcEvent(new GcEvtArgs
+                            if (notify is IXCLRDataExceptionNotification2 notify2)
+                            {
+                                notify2.OnException(exceptionState);
+                            }
+                            else
+                            {
+                                hr = HResults.E_INVALIDARG;
+                            }
+                        };
+                        break;
+                    }
+
+                    case GcNotificationData gc:
+                    {
+                        if (gc.IsSupportedEvent)
+                        {
+                            GcEvtArgs args = new()
                             {
                                 type = gc.EventData.EventType switch
                                 {
@@ -1254,27 +1269,43 @@ public sealed unsafe partial class SOSDacImpl : IXCLRDataProcess, IXCLRDataProce
                                     _ => GcEvtArgs.GcEvt_t.GC_EVENT_TYPE_MAX,
                                 },
                                 condemnedGeneration = gc.EventData.CondemnedGeneration,
-                            });
+                            };
+                            callback = () =>
+                            {
+                                if (notify is IXCLRDataExceptionNotification3 notify3)
+                                {
+                                    notify3.OnGcEvent(args);
+                                }
+                            };
+                            hr = HResults.S_OK;
                         }
-                        hr = HResults.S_OK;
+                        else
+                        {
+                            hr = HResults.E_FAIL;
+                        }
+                        break;
                     }
-                    else
-                        hr = HResults.E_FAIL;
-                    break;
-                }
 
-                case ExceptionCatcherEnterNotificationData exceptionCatcherEnter:
-                {
-                    if (notify is IXCLRDataExceptionNotification4 notify4)
+                    case ExceptionCatcherEnterNotificationData exceptionCatcherEnter:
                     {
                         TargetPointer appDomain = _target.Contracts.Loader.GetAppDomain();
                         IRuntimeTypeSystem rts = _target.Contracts.RuntimeTypeSystem;
                         MethodDescHandle methodDesc = rts.GetMethodDescHandle(exceptionCatcherEnter.MethodDescAddress);
-                        notify4.ExceptionCatcherEnter(new ClrDataMethodInstance(_target, methodDesc, appDomain, null, _apiLock), exceptionCatcherEnter.NativeOffset);
+                        ClrDataMethodInstance methodInst = new(_target, methodDesc, appDomain, null, _apiLock);
+                        uint nativeOffset = exceptionCatcherEnter.NativeOffset;
+                        callback = () =>
+                        {
+                            if (notify is IXCLRDataExceptionNotification4 notify4)
+                            {
+                                notify4.ExceptionCatcherEnter(methodInst, nativeOffset);
+                            }
+                        };
+                        break;
                     }
-                    break;
                 }
             }
+
+            callback?.Invoke();
         }
         catch (System.Exception ex)
         {
